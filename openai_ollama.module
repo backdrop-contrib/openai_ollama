@@ -19,7 +19,7 @@ function openai_ollama_autoload_info() {
   ];
 }
 
-/**d
+/**
  * Implements hook_openai_provider_info().
  */
 function openai_ollama_openai_provider_info() {
