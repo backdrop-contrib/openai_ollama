@@ -249,7 +249,7 @@ class OllamaAdapter implements AIClientInterface {
     catch (\Exception $e) {
       // Also log to the central openai_log if possible.
       if (isset($this->api) && method_exists($this->api, 'recordLog')) {
-        $duration = microtime(TRUE) - ($start_time ?? microtime(TRUE));
+        $duration = microtime(TRUE) - $start_time;
         $this->api->recordLog('embedding', $model, ['input' => $input], NULL, FALSE, $duration, $e->getMessage(), !$log);
       }
       if ($log) {
