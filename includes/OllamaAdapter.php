@@ -240,7 +240,11 @@ class OllamaAdapter implements AIClientInterface {
       ]);
 
       $result = $response->embeddings[0]->embedding ?? [];
-      if (isset($this->api) && method_exists($this->api, 'recordLog')) {
+      // Note: `method_exists()` accepts an object or a class-name string. If
+      // `$this->api` ever holds a class-name string, calling
+      // `$this->api->recordLog(...)` will fatal. Require an object here to
+      // ensure instance method invocation is safe.
+      if (is_object($this->api) && method_exists($this->api, 'recordLog')) {
         $duration = microtime(TRUE) - $start_time;
         $this->api->recordLog('embedding', $model, ['input' => $input], $response, TRUE, $duration, NULL, !$log);
       }
@@ -248,14 +252,23 @@ class OllamaAdapter implements AIClientInterface {
     }
     catch (\Exception $e) {
       // Also log to the central openai_log if possible.
-      if (isset($this->api) && method_exists($this->api, 'recordLog')) {
-        $duration = microtime(TRUE) - $start_time;
-        $this->api->recordLog('embedding', $model, ['input' => $input], NULL, FALSE, $duration, $e->getMessage(), !$log);
+      // The special-case suppression for "does not support embeddings"
+      // currently only affected the watchdog() call. RecordLog() was being
+      // invoked before that suppression check, which meant probe errors were
+      // still written to the central log when `$log` was TRUE. Apply the same
+      // suppression here and require an object for safe method invocation.
+      $error_msg = $e->getMessage();
+      $is_probe_no_embeddings = (strpos($error_msg, 'does not support embeddings') !== FALSE);
+      if (!$is_probe_no_embeddings) {
+        if (is_object($this->api) && method_exists($this->api, 'recordLog')) {
+          $duration = microtime(TRUE) - $start_time;
+          $this->api->recordLog('embedding', $model, ['input' => $input], NULL, FALSE, $duration, $error_msg, !$log);
+        }
       }
       if ($log) {
-        $error_msg = $e->getMessage();
-        // Specifically suppress log if it's a "does not support embeddings" error during probing.
-        if (strpos($error_msg, 'does not support embeddings') === FALSE) {
+        // Specifically suppress watchdog logging for the probing "does not
+        // support embeddings" message so probes don't create noise.
+        if (!$is_probe_no_embeddings) {
           watchdog('openai_ollama', 'Embedding failed: @error', ['@error' => $error_msg], WATCHDOG_ERROR);
         }
       }
