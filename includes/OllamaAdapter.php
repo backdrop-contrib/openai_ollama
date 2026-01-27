@@ -40,13 +40,19 @@ class OllamaAdapter implements AIClientInterface {
   /** @var string */
   protected $baseUrl;
 
+  /** @var OpenAIApi|null */
+  protected $api;
+
   /**
    * Constructor.
    *
    * @param string $apiKey
    *   Not used for Ollama, but required by interface. Pass any string.
+   * @param OpenAIApi|null $api
+   *   Optional parent API wrapper.
    */
-  public function __construct($apiKey) {
+  public function __construct($apiKey, $api = NULL) {
+    $this->api = $api;
     // Get base URL from central OpenAI providers mapping first, then fall back
     // to module config and finally the localhost default.
     $providers_root = config_get('openai.settings', 'providers') ?: [];
@@ -226,16 +232,33 @@ class OllamaAdapter implements AIClientInterface {
    * {@inheritdoc}
    */
   public function embedding(string $input, string $model, bool $log = TRUE): array {
+    $start_time = microtime(TRUE);
     try {
       $response = $this->client->embeddings()->create([
         'model' => $model,
         'input' => $input,
       ]);
 
-      return $response->embeddings[0]->embedding ?? [];
+      $result = $response->embeddings[0]->embedding ?? [];
+      if (isset($this->api) && method_exists($this->api, 'recordLog')) {
+        $duration = microtime(TRUE) - $start_time;
+        $this->api->recordLog('embedding', $model, ['input' => $input], $response, TRUE, $duration, NULL, !$log);
+      }
+      return $result;
     }
     catch (\Exception $e) {
-      watchdog('openai_ollama', 'Embedding failed: @error', ['@error' => $e->getMessage()], WATCHDOG_ERROR);
+      // Also log to the central openai_log if possible.
+      if (isset($this->api) && method_exists($this->api, 'recordLog')) {
+        $duration = microtime(TRUE) - ($start_time ?? microtime(TRUE));
+        $this->api->recordLog('embedding', $model, ['input' => $input], NULL, FALSE, $duration, $e->getMessage(), !$log);
+      }
+      if ($log) {
+        $error_msg = $e->getMessage();
+        // Specifically suppress log if it's a "does not support embeddings" error during probing.
+        if (strpos($error_msg, 'does not support embeddings') === FALSE) {
+          watchdog('openai_ollama', 'Embedding failed: @error', ['@error' => $error_msg], WATCHDOG_ERROR);
+        }
+      }
       return [];
     }
   }
