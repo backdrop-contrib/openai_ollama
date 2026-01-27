@@ -252,7 +252,7 @@ class OllamaAdapter implements AIClientInterface {
       }
       $response_metadata = [
         'model' => $model,
-        'input_length' => mb_strlen($input),
+        'input_length' => function_exists('mb_strlen') ? mb_strlen($input) : strlen($input),
         'embedding_count' => $embedding_count,
         'embedding_dimensions' => $embedding_dimensions,
       ];
