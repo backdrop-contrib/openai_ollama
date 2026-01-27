@@ -240,13 +240,29 @@ class OllamaAdapter implements AIClientInterface {
       ]);
 
       $result = $response->embeddings[0]->embedding ?? [];
+      // Prepare lightweight metadata for logging instead of the full
+      // embeddings payload, which can be very large.
+      $embedding_count = 0;
+      if (isset($response->embeddings) && is_iterable($response->embeddings)) {
+        $embedding_count = count($response->embeddings);
+      }
+      $embedding_dimensions = NULL;
+      if ($embedding_count > 0 && isset($response->embeddings[0]->embedding) && is_array($response->embeddings[0]->embedding)) {
+        $embedding_dimensions = count($response->embeddings[0]->embedding);
+      }
+      $response_metadata = [
+        'model' => $model,
+        'input_length' => mb_strlen($input),
+        'embedding_count' => $embedding_count,
+        'embedding_dimensions' => $embedding_dimensions,
+      ];
       // Note: `method_exists()` accepts an object or a class-name string. If
       // `$this->api` ever holds a class-name string, calling
       // `$this->api->recordLog(...)` will fatal. Require an object here to
       // ensure instance method invocation is safe.
       if (is_object($this->api) && method_exists($this->api, 'recordLog')) {
         $duration = microtime(TRUE) - $start_time;
-        $this->api->recordLog('embedding', $model, ['input' => $input], $response, TRUE, $duration, NULL, !$log);
+        $this->api->recordLog('embedding', $model, ['input' => $input], $response_metadata, TRUE, $duration, NULL, !$log);
       }
       return $result;
     }
