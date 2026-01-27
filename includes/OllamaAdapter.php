@@ -278,7 +278,21 @@ class OllamaAdapter implements AIClientInterface {
       if (!$is_probe_no_embeddings) {
         if (is_object($this->api) && method_exists($this->api, 'recordLog')) {
           $duration = microtime(TRUE) - $start_time;
-          $this->api->recordLog('embedding', $model, ['input' => $input], NULL, FALSE, $duration, $error_msg, !$log);
+          // SECURITY: Logging the raw `input` here can persist end-user content
+          // (including PII or secrets) to logs. By default we truncate the
+          // logged input to avoid accidental leakage. If you need full input
+          // logging, add an explicit opt-in (e.g., `log_full_inputs`) behind
+          // protected configuration and audit access to those logs.
+          $logged_input = $input;
+          if (is_string($input)) {
+            $max_log_chars = 200;
+            if (function_exists('mb_substr')) {
+              $logged_input = mb_strlen($input) > $max_log_chars ? mb_substr($input, 0, $max_log_chars) . '... (truncated)' : $input;
+            } else {
+              $logged_input = strlen($input) > $max_log_chars ? substr($input, 0, $max_log_chars) . '... (truncated)' : $input;
+            }
+          }
+          $this->api->recordLog('embedding', $model, ['input' => $logged_input], NULL, FALSE, $duration, $error_msg, !$log);
         }
       }
       if ($log) {
